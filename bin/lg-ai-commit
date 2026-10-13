@@ -1,14 +1,21 @@
 #!/usr/bin/env bash
-# Generate a Conventional Commit message for the staged changes with Claude,
+# Generate a Conventional Commit message for the staged changes with an AI CLI,
 # then open $EDITOR so the user can review it before committing.
 set -euo pipefail
 
-MODEL="${LG_AI_MODEL:-haiku}"
-MAX_DIFF_CHARS="${LG_AI_MAX_DIFF:-60000}"
+# Resolve symlinks so lib/ is found when installed via install.sh
+src="${BASH_SOURCE[0]}"
+while [[ -L "$src" ]]; do
+  dir="$(cd "$(dirname "$src")" && pwd)"
+  src="$(readlink "$src")"
+  [[ "$src" != /* ]] && src="$dir/$src"
+done
+# shellcheck source=../lib/lg-ai-common.sh
+source "$(cd "$(dirname "$src")/.." && pwd)/lib/lg-ai-common.sh"
 
 if git diff --cached --quiet; then
   echo "Nothing staged. Stage some changes first."
-  read -r -p "Press enter to continue..." _
+  pause
   exit 1
 fi
 
@@ -35,20 +42,15 @@ ${stat}
 Staged diff:
 ${diff}"
 
-echo "Generating commit message with Claude (${MODEL})..."
+echo "Generating commit message with $(ai_label)..."
 msg_file="$(mktemp -t lg-ai-commit)"
 trap 'rm -f "$msg_file"' EXIT
 
-printf '%s' "$prompt" | claude -p \
-  --model "$MODEL" \
-  --tools "" \
-  --strict-mcp-config \
-  --setting-sources "" \
-  --no-session-persistence >"$msg_file"
+printf '%s' "$prompt" | ai_generate | strip_fences >"$msg_file"
 
 if [[ ! -s "$msg_file" ]]; then
-  echo "Claude returned an empty message."
-  read -r -p "Press enter to continue..." _
+  echo "The AI returned an empty message."
+  pause
   exit 1
 fi
 

@@ -14,7 +14,10 @@ for script in "$REPO_DIR"/bin/*; do
   echo "Linked $name -> $INSTALL_DIR/$name"
 done
 
-for dep in claude git gh lazygit; do
+deps=(git gh lazygit)
+[[ -z "${LG_AI_CMD:-}" ]] && deps+=("${LG_AI_PROVIDER:-claude}")
+
+for dep in "${deps[@]}"; do
   command -v "$dep" >/dev/null 2>&1 || echo "Warning: '$dep' not found in PATH."
 done
 

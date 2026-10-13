@@ -1,12 +1,17 @@
 #!/usr/bin/env bash
-# Generate a Pull Request title and body with Claude from the current branch,
+# Generate a Pull Request title and body with an AI CLI from the current branch,
 # open $EDITOR for review, then push and create the PR with gh.
 set -euo pipefail
 
-MODEL="${LG_AI_MODEL:-haiku}"
-MAX_DIFF_CHARS="${LG_AI_MAX_DIFF:-60000}"
-
-pause() { read -r -p "Press enter to continue..." _; }
+# Resolve symlinks so lib/ is found when installed via install.sh
+src="${BASH_SOURCE[0]}"
+while [[ -L "$src" ]]; do
+  dir="$(cd "$(dirname "$src")" && pwd)"
+  src="$(readlink "$src")"
+  [[ "$src" != /* ]] && src="$dir/$src"
+done
+# shellcheck source=../lib/lg-ai-common.sh
+source "$(cd "$(dirname "$src")/.." && pwd)/lib/lg-ai-common.sh"
 
 base="${1:-$(gh repo view --json defaultBranchRef -q .defaultBranchRef.name)}"
 branch="$(git rev-parse --abbrev-ref HEAD)"
@@ -52,17 +57,18 @@ ${stat}
 Diff:
 ${diff}"
 
-echo "Generating PR description with Claude (${MODEL})..."
+echo "Generating PR description with $(ai_label)..."
 pr_file="$(mktemp -t lg-ai-pr)"
 body_file="$(mktemp -t lg-ai-pr-body)"
 trap 'rm -f "$pr_file" "$body_file"' EXIT
 
-printf '%s' "$prompt" | claude -p \
-  --model "$MODEL" \
-  --tools "" \
-  --strict-mcp-config \
-  --setting-sources "" \
-  --no-session-persistence >"$pr_file"
+printf '%s' "$prompt" | ai_generate | strip_fences >"$pr_file"
+
+if [[ ! -s "$pr_file" ]]; then
+  echo "The AI returned an empty response."
+  pause
+  exit 1
+fi
 
 # Use the same editor git uses (core.editor > $VISUAL > $EDITOR > vi)
 eval "$(git var GIT_EDITOR) \"\$pr_file\""
