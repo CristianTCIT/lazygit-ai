@@ -1,0 +1,90 @@
+#!/usr/bin/env bash
+# Generate a Pull Request title and body with Claude from the current branch,
+# open $EDITOR for review, then push and create the PR with gh.
+set -euo pipefail
+
+MODEL="${LG_AI_MODEL:-haiku}"
+MAX_DIFF_CHARS="${LG_AI_MAX_DIFF:-60000}"
+
+pause() { read -r -p "Press enter to continue..." _; }
+
+base="${1:-$(gh repo view --json defaultBranchRef -q .defaultBranchRef.name)}"
+branch="$(git rev-parse --abbrev-ref HEAD)"
+
+if [[ "$branch" == "$base" ]]; then
+  echo "You are on the base branch ($base). Switch to a feature branch first."
+  pause
+  exit 1
+fi
+
+git fetch origin "$base" --quiet || true
+range_base="origin/$base"
+git rev-parse --verify --quiet "$range_base" >/dev/null || range_base="$base"
+
+commits="$(git log --no-merges --format='- %s%n%b' "$range_base..HEAD")"
+if [[ -z "$commits" ]]; then
+  echo "No commits between $range_base and $branch."
+  pause
+  exit 1
+fi
+
+stat="$(git diff --stat "$range_base...HEAD")"
+diff="$(git diff "$range_base...HEAD" | head -c "$MAX_DIFF_CHARS")"
+
+prompt="Write a GitHub Pull Request title and description for branch '${branch}' targeting '${base}'.
+
+Rules:
+- Write in English.
+- FIRST line: the PR title only, Conventional Commits style, max 72 characters.
+- Then a blank line, then the markdown body with these sections:
+  ## Summary (2-4 sentences, the WHY)
+  ## Changes (bullet list of the relevant changes)
+  ## Testing (how to verify)
+- Never add AI attribution or 'Generated with' footers.
+- Output ONLY the title and body, no code fences, no preamble.
+
+Commits:
+${commits}
+
+Diff stat:
+${stat}
+
+Diff:
+${diff}"
+
+echo "Generating PR description with Claude (${MODEL})..."
+pr_file="$(mktemp -t lg-ai-pr)"
+body_file="$(mktemp -t lg-ai-pr-body)"
+trap 'rm -f "$pr_file" "$body_file"' EXIT
+
+printf '%s' "$prompt" | claude -p \
+  --model "$MODEL" \
+  --tools "" \
+  --strict-mcp-config \
+  --setting-sources "" \
+  --no-session-persistence >"$pr_file"
+
+# Use the same editor git uses (core.editor > $VISUAL > $EDITOR > vi)
+eval "$(git var GIT_EDITOR) \"\$pr_file\""
+
+title="$(head -n 1 "$pr_file")"
+tail -n +2 "$pr_file" | sed '/./,$!d' >"$body_file"
+
+if [[ -z "${title// /}" ]]; then
+  echo "Empty title. Aborting."
+  pause
+  exit 1
+fi
+
+echo "Title: $title"
+read -r -p "Create PR against '$base'? [y/N] " answer
+[[ "$answer" =~ ^[Yy]$ ]] || { echo "Aborted."; exit 0; }
+
+if ! git rev-parse --abbrev-ref --symbolic-full-name '@{u}' >/dev/null 2>&1; then
+  git push -u origin HEAD
+else
+  git push
+fi
+
+gh pr create --base "$base" --title "$title" --body-file "$body_file"
+pause

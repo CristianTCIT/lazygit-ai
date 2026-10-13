@@ -1,0 +1,14 @@
+# Add these entries to your lazygit config.yml
+# macOS: ~/Library/Application Support/lazygit/config.yml
+# Linux: ~/.config/lazygit/config.yml
+customCommands:
+  - key: "<c-a>"
+    context: "files"
+    description: "AI commit message (Claude)"
+    command: "lg-ai-commit"
+    output: terminal
+  - key: "<c-a>"
+    context: "localBranches"
+    description: "AI Pull Request (Claude)"
+    command: "lg-ai-pr"
+    output: terminal

@@ -1,0 +1,55 @@
+#!/usr/bin/env bash
+# Generate a Conventional Commit message for the staged changes with Claude,
+# then open $EDITOR so the user can review it before committing.
+set -euo pipefail
+
+MODEL="${LG_AI_MODEL:-haiku}"
+MAX_DIFF_CHARS="${LG_AI_MAX_DIFF:-60000}"
+
+if git diff --cached --quiet; then
+  echo "Nothing staged. Stage some changes first."
+  read -r -p "Press enter to continue..." _
+  exit 1
+fi
+
+diff="$(git diff --cached | head -c "$MAX_DIFF_CHARS")"
+stat="$(git diff --cached --stat)"
+recent="$(git log -5 --oneline 2>/dev/null || true)"
+
+prompt="Write a git commit message for the staged changes below.
+
+Rules:
+- Follow Conventional Commits (feat, fix, chore, refactor, docs, test, perf, style, build, ci).
+- Write in English.
+- Subject line: imperative mood, max 72 characters, no trailing period.
+- Optionally add a blank line and a short body (bullets) explaining WHAT and WHY.
+- Never add Co-Authored-By lines or any AI attribution.
+- Output ONLY the commit message, no code fences, no preamble.
+
+Recent commits (for style reference):
+${recent}
+
+Diff stat:
+${stat}
+
+Staged diff:
+${diff}"
+
+echo "Generating commit message with Claude (${MODEL})..."
+msg_file="$(mktemp -t lg-ai-commit)"
+trap 'rm -f "$msg_file"' EXIT
+
+printf '%s' "$prompt" | claude -p \
+  --model "$MODEL" \
+  --tools "" \
+  --strict-mcp-config \
+  --setting-sources "" \
+  --no-session-persistence >"$msg_file"
+
+if [[ ! -s "$msg_file" ]]; then
+  echo "Claude returned an empty message."
+  read -r -p "Press enter to continue..." _
+  exit 1
+fi
+
+git commit -e -F "$msg_file"
