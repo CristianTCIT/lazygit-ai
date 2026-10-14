@@ -57,12 +57,15 @@ If you already have a `customCommands` section, add the two entries to it. Don't
 ### Pull request
 
 1. Check out your feature branch.
-2. In the **Local branches** panel, press `Ctrl+A`.
-3. The AI writes the title (first line) and the body (Summary / Changes / Testing). Your editor opens with it.
-4. Save and close, then confirm with `y`.
-5. The script pushes the branch (setting the upstream if needed) and creates the PR.
+2. In the **Local branches** panel, move the cursor to the branch you want to merge into (the PR base) and press `Ctrl+A`.
+3. A prompt asks for the base branch. It's prefilled with the selected branch and suggests your other branches as you type. Press `Enter` to accept, or clear it to use the repo's default branch.
+4. The AI writes the title (first line) and the body (Summary / Changes / Testing). Your editor opens with it.
+5. Save and close, then confirm with `y`.
+6. The script pushes the branch (setting the upstream if needed) and creates the PR.
 
-The base branch defaults to the repo's default branch. You can override it by running the script manually:
+The PR head is always the checked-out branch, not the selected one. If you leave the cursor on the checked-out branch, the base equals the head and the script stops with an error. The base branch has to exist on `origin`.
+
+Outside lazygit, pass the base as the first argument. Without one, it uses the repo's default branch:
 
 ```bash
 lg-ai-pr develop
