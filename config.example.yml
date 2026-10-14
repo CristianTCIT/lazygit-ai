@@ -10,5 +10,12 @@ customCommands:
   - key: "<c-a>"
     context: "localBranches"
     description: "AI Pull Request (Claude)"
-    command: "lg-ai-pr"
+    prompts:
+      - type: "input"
+        title: "Base branch (empty = repo default)"
+        key: "Base"
+        initialValue: "{{.SelectedLocalBranch.Name}}"
+        suggestions:
+          preset: "branches"
+    command: "lg-ai-pr {{.Form.Base | quote}}"
     output: terminal
